@@ -1,0 +1,7 @@
+test.ipynb
+app/test.ipynb
+app/transactions.json
+.poetry
+.env
+__pycache__/
+app/__pycache__/
