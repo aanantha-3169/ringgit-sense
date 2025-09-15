@@ -5,10 +5,14 @@ import os
 import requests
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file for local testing
+load_dotenv()
 
 # --- Configuration ---
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "6985833874:AAHS6rDw7ntPnq9F4txdL15dhdFKvmxD5UU")
-AUTHORIZED_USER_ID = os.environ.get("TELEGRAM_CHAT_ID", 5997427916)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+AUTHORIZED_USER_ID = int(os.environ.get("TELEGRAM_CHAT_ID"))
 FETCH_TIME = "20:00" # 8:00 PM
 SUMMARY_TIME = "20:01" # 8:01 PM
 

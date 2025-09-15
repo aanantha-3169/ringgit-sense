@@ -5,11 +5,15 @@ import re
 import os
 import json
 from datetime import datetime,timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file for local testing
+load_dotenv()
 
 # --- Configuration ---
 EMAIL_SERVER = "imap.gmail.com"
-EMAIL_USER = os.environ.get("EMAIL_USER", "aananmariappan@gmail.com")
-EMAIL_PASS = os.environ.get("EMAIL_PASS", "iadz kthl qxmv myyi")
+EMAIL_USER = os.environ.get("EMAIL_USER")
+EMAIL_PASS = os.environ.get("EMAIL_PASS")
 GX_BANK_SENDER = "alerts@gxbank.my"
 TRANSACTIONS_FILE = "transactions.json"
 

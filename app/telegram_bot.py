@@ -11,10 +11,15 @@ from telegram.ext import (
     filters,
 )
 
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file for local testing
+load_dotenv()
+
 # --- Configuration ---
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "6985833874:AAHS6rDw7ntPnq9F4txdL15dhdFKvmxD5UU")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TRANSACTIONS_FILE = "transactions.json"
-AUTHORIZED_USER_ID = os.environ.get("TELEGRAM_CHAT_ID", 5997427916)
+AUTHORIZED_USER_ID = int(os.environ.get("TELEGRAM_CHAT_ID"))
 
 # --- Data Handling ---
 def load_transactions():
@@ -53,7 +58,10 @@ GET_SUMMARY_DATES = range(1)
 # Security decorator to ensure only you can use the bot
 def authorized_only(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        print(update.effective_user.id)
+        # print(update.effective_user.id)
+        # print(AUTHORIZED_USER_ID)
+        # print(type(update.effective_user.id))
+        # print(type(AUTHORIZED_USER_ID))
         if update.effective_user.id != AUTHORIZED_USER_ID:
             await update.message.reply_text("Sorry, you are not authorized to use this bot.")
             return
