@@ -12,7 +12,15 @@ from telegram.ext import (
 )
 
 from dotenv import load_dotenv
-from .database import db_client
+
+# Try relative import first, fallback to absolute import
+try:
+    from .database import db_client
+except ImportError:
+    # For GitHub Actions and direct script execution
+    import sys
+    sys.path.append(os.path.dirname(__file__))
+    from database import db_client
 
 # Load environment variables from a .env file for local testing
 load_dotenv()

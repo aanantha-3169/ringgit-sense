@@ -7,9 +7,9 @@ on:
   workflow_dispatch:  # Allow manual trigger for testing
     inputs:
       branch:
-        description: 'cloud_version'
+        description: 'Branch to use'
         required: false
-        default: 'cloud_version'
+        default: 'main'
         type: string
 
 jobs:
