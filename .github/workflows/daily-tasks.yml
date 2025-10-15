@@ -1,0 +1,40 @@
+name: Daily Finance Tasks
+
+on:
+  schedule:
+    # Run at 8:00 PM Malaysia time (UTC+8) = 12:00 PM UTC
+    - cron: '0 12 * * *'
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  daily-tasks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Fetch emails and send summary
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scripts/daily_tasks.py
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Daily tasks failed. Check the logs for details."
