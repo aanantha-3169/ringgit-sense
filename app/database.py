@@ -238,6 +238,67 @@ class DatabaseClient:
         except Exception as e:
             logger.error(f"Error creating user settings: {e}")
             return None
+    
+    async def get_transaction_by_id(self, transaction_id: str) -> Optional[Dict]:
+        """
+        Get a specific transaction by ID
+        
+        Args:
+            transaction_id: Transaction UUID
+            
+        Returns:
+            Transaction dictionary or None
+        """
+        try:
+            result = self.supabase.table('transactions').select('*').eq('id', transaction_id).execute()
+            return result.data[0] if result.data else None
+            
+        except Exception as e:
+            logger.error(f"Error fetching transaction by ID: {e}")
+            return None
+    
+    async def delete_transaction(self, transaction_id: str) -> bool:
+        """
+        Delete a transaction by ID
+        
+        Args:
+            transaction_id: Transaction UUID
+            
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        try:
+            result = self.supabase.table('transactions').delete().eq('id', transaction_id).execute()
+            
+            if result.data:
+                logger.info(f"Transaction {transaction_id} deleted successfully")
+                return True
+            else:
+                logger.warning(f"No transaction found with ID: {transaction_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error deleting transaction: {e}")
+            return False
+    
+    async def search_transactions(self, query: str, limit: int = 10) -> List[Dict]:
+        """
+        Search transactions by recipient name (case-insensitive)
+        
+        Args:
+            query: Search query (recipient name)
+            limit: Maximum number of results
+            
+        Returns:
+            List of matching transactions
+        """
+        try:
+            result = self.supabase.table('transactions').select('*').ilike('recipient', f'%{query}%').order('date', desc=True).limit(limit).execute()
+            return result.data if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Error searching transactions: {e}")
+            return []
 
 # Global database client instance
 db_client = DatabaseClient()

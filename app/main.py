@@ -4,11 +4,11 @@ import asyncio
 from aiohttp import web
 from dotenv import load_dotenv
 
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram import Update
 
 from .email_fetcher import fetch_and_save_emails
-from .telegram_bot import start, add, summary, help_command, send_daily_summary
+from .telegram_bot import start, add, summary, help_command, send_daily_summary, search_transactions, delete_transaction, confirm_delete
 
 load_dotenv()
 
@@ -80,6 +80,11 @@ async def init_app():
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("summary", summary))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("search", search_transactions))
+    app.add_handler(CommandHandler("delete", delete_transaction))
+    
+    # Add message handler for delete confirmation
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_delete))
 
     # Initialize the application
     await app.initialize()

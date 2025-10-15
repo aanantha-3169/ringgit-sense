@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # State for the conversation handler
 GET_SUMMARY_DATES = range(1)
+DELETE_CONFIRMATION = range(1)
 
 # Security decorator to ensure only you can use the bot
 def authorized_only(func):
@@ -60,6 +61,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- `/summary` - Get today's expense summary.\n"
         "- `/summary YYYY-MM-DD` - Summary for a specific day.\n"
         "- `/summary YYYY-MM-DD YYYY-MM-DD` - Summary for a date range.\n"
+        "- `/search Coffee` - Search for transactions.\n"
+        "- `/delete <transaction_id>` - Delete a transaction.\n"
         "- `/help` - Show this message again."
     )
 
@@ -157,6 +160,109 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the help message."""
     await start(update, context) # Re-use the start message for help
+
+@authorized_only
+async def search_transactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Search for transactions by recipient name."""
+    try:
+        if not context.args:
+            await update.message.reply_text("Please provide a search term.\nExample: `/search Coffee`")
+            return
+        
+        search_term = " ".join(context.args)
+        transactions = await db_client.search_transactions(search_term, limit=10)
+        
+        if not transactions:
+            await update.message.reply_text(f"No transactions found matching '{search_term}'")
+            return
+        
+        message = f"🔍 *Search Results for '{search_term}'*\n\n"
+        
+        for i, t in enumerate(transactions, 1):
+            source_emoji = "📧" if t['source'] == 'GX Bank' else "✍️"
+            message += f"{i}. {source_emoji} `RM {t['amount']:>7.2f}` - {t['recipient']}\n"
+            message += f"   📅 {t['date']} | 🆔 `{t['id']}`\n\n"
+        
+        message += f"*Found {len(transactions)} transaction(s)*\n"
+        message += "Use `/delete <transaction_id>` to delete a transaction"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in search command: {e}")
+        await update.message.reply_text("❌ An error occurred while searching.")
+
+@authorized_only
+async def delete_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a transaction by ID with confirmation."""
+    try:
+        if not context.args:
+            await update.message.reply_text(
+                "Please provide a transaction ID.\n"
+                "Example: `/delete 123e4567-e89b-12d3-a456-426614174000`\n\n"
+                "Use `/search <term>` to find transaction IDs."
+            )
+            return
+        
+        transaction_id = context.args[0]
+        
+        # Get the transaction first to show what will be deleted
+        transaction = await db_client.get_transaction_by_id(transaction_id)
+        
+        if not transaction:
+            await update.message.reply_text(
+                f"❌ Transaction with ID `{transaction_id}` not found.\n\n"
+                "Use `/search <term>` to find valid transaction IDs.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Show transaction details and ask for confirmation
+        source_emoji = "📧" if transaction['source'] == 'GX Bank' else "✍️"
+        message = f"⚠️ *Confirm Deletion*\n\n"
+        message += f"{source_emoji} `RM {transaction['amount']:>7.2f}` - {transaction['recipient']}\n"
+        message += f"📅 {transaction['date']}\n"
+        message += f"🆔 `{transaction_id}`\n\n"
+        message += f"*Are you sure you want to delete this transaction?*\n\n"
+        message += f"Reply with `YES` to confirm deletion, or any other message to cancel."
+        
+        # Store transaction ID in context for confirmation
+        context.user_data['pending_delete_id'] = transaction_id
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in delete command: {e}")
+        await update.message.reply_text("❌ An error occurred while processing delete request.")
+
+@authorized_only
+async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle delete confirmation."""
+    try:
+        if 'pending_delete_id' not in context.user_data:
+            await update.message.reply_text("No pending deletion. Use `/delete <transaction_id>` first.")
+            return
+        
+        user_response = update.message.text.strip().upper()
+        transaction_id = context.user_data['pending_delete_id']
+        
+        if user_response == 'YES':
+            # Proceed with deletion
+            success = await db_client.delete_transaction(transaction_id)
+            
+            if success:
+                await update.message.reply_text("✅ Transaction deleted successfully!")
+            else:
+                await update.message.reply_text("❌ Failed to delete transaction. It may have already been deleted.")
+        else:
+            await update.message.reply_text("❌ Deletion cancelled.")
+        
+        # Clear the pending deletion
+        context.user_data.pop('pending_delete_id', None)
+        
+    except Exception as e:
+        logger.error(f"Error in confirm_delete: {e}")
+        await update.message.reply_text("❌ An error occurred during deletion confirmation.")
 
 async def send_daily_summary():
     """
