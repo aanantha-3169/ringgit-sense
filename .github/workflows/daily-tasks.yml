@@ -5,6 +5,12 @@ on:
     # Run at 8:00 PM Malaysia time (UTC+8) = 12:00 PM UTC
     - cron: '0 12 * * *'
   workflow_dispatch:  # Allow manual trigger for testing
+    inputs:
+      branch:
+        description: 'cloud_version'
+        required: false
+        default: 'cloud_version'
+        type: string
 
 jobs:
   daily-tasks:
