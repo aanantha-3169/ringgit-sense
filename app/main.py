@@ -1,20 +1,21 @@
 import os
 import logging
 import asyncio
-import signal
+from aiohttp import web
 from dotenv import load_dotenv
 
 from telegram.ext import Application, CommandHandler
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from telegram import Update
 
 from .email_fetcher import fetch_and_save_emails
-from .telegram_bot import start, add, summary, help_command
+from .telegram_bot import start, add, summary, help_command, send_daily_summary
 
 load_dotenv()
 
 # --- Configuration ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 AUTHORIZED_USER_ID = int(os.environ.get("TELEGRAM_CHAT_ID"))
+WEBHOOK_PORT = int(os.environ.get("PORT", 8000))
 
 # Enable logging
 logging.basicConfig(
@@ -22,25 +23,56 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Scheduled Job Functions (These remain the same) ---
-async def scheduled_email_fetch(context):
-    logger.info("Running scheduled email fetch job.")
+# Global application instance
+app = None
+
+async def webhook_handler(request):
+    """Handle incoming webhook requests from Telegram"""
     try:
-        await context.application.create_task(fetch_and_save_emails())
+        data = await request.json()
+        update = Update.de_json(data, app.bot)
+        
+        if update:
+            await app.process_update(update)
+            logger.info(f"Processed update: {update.update_id}")
+        
+        return web.Response(text="OK")
     except Exception as e:
-        logger.error(f"Error in scheduled_email_fetch: {e}")
+        logger.error(f"Error processing webhook: {e}")
+        return web.Response(text="Error", status=500)
 
-async def send_daily_summary(context):
-    # ... (code to format and send the message)
-    logger.info("Running scheduled daily summary job.")
-    # ...
+async def health_check(request):
+    """Health check endpoint for Render"""
+    return web.Response(text="Bot is running", status=200)
 
-async def main():
-    """Start the bot and the scheduler."""
-    logger.info("Starting bot...")
+async def manual_email_fetch(request):
+    """Manual endpoint to trigger email fetching (for testing)"""
+    try:
+        await fetch_and_save_emails()
+        return web.Response(text="Email fetch completed", status=200)
+    except Exception as e:
+        logger.error(f"Error in manual email fetch: {e}")
+        return web.Response(text="Error", status=500)
+
+async def manual_summary(request):
+    """Manual endpoint to trigger daily summary (for testing)"""
+    try:
+        success = await send_daily_summary()
+        if success:
+            return web.Response(text="Daily summary sent", status=200)
+        else:
+            return web.Response(text="Failed to send summary", status=500)
+    except Exception as e:
+        logger.error(f"Error in manual summary: {e}")
+        return web.Response(text="Error", status=500)
+
+async def init_app():
+    """Initialize the Telegram bot application"""
+    global app
     
-    # --- Create the Application with Signal Handlers ---
-    # This allows you to stop the bot gracefully with Ctrl+C
+    logger.info("Initializing Telegram bot application...")
+    
+    # Create the Application
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Add command handlers
@@ -49,41 +81,59 @@ async def main():
     app.add_handler(CommandHandler("summary", summary))
     app.add_handler(CommandHandler("help", help_command))
 
-    # --- Scheduler Setup ---
-    scheduler = AsyncIOScheduler(timezone="Asia/Kuala_Lumpur")
-    scheduler.add_job(scheduled_email_fetch, 'cron', hour=20, minute=0, args=[app])
-    scheduler.add_job(send_daily_summary, 'cron', hour=20, minute=1, args=[app])
+    # Initialize the application
+    await app.initialize()
     
-    # --- The Correct Startup Sequence ---
-    # The `async with` block handles app.initialize() and app.shutdown() automatically.
-    async with app:
-        scheduler.start()
-        logger.info("Scheduler started.")
-        
-        # Start the bot's internal processes
-        await app.start()
-        # Start listening for updates from Telegram
-        await app.updater.start_polling()
-        
-        logger.info("Bot is running. Press Ctrl+C to stop.")
-        
-        # Keep the script running until a shutdown signal is received
-        # This replaces the blocking `run_polling()` call
-        while app.running:
+    logger.info("Telegram bot application initialized successfully")
+    return app
+
+async def create_web_app():
+    """Create the web application with routes"""
+    # Initialize Telegram bot
+    await init_app()
+    
+    # Create web application
+    web_app = web.Application()
+    
+    # Add routes
+    web_app.router.add_post('/webhook', webhook_handler)
+    web_app.router.add_get('/health', health_check)
+    web_app.router.add_post('/fetch-emails', manual_email_fetch)
+    web_app.router.add_post('/send-summary', manual_summary)
+    
+    logger.info(f"Web application created with webhook endpoint at /webhook")
+    return web_app
+
+async def main():
+    """Main function to start the webhook server"""
+    logger.info("Starting webhook server...")
+    
+    # Create web application
+    web_app = await create_web_app()
+    
+    # Start the web server
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    
+    site = web.TCPSite(runner, '0.0.0.0', WEBHOOK_PORT)
+    await site.start()
+    
+    logger.info(f"Webhook server started on port {WEBHOOK_PORT}")
+    logger.info("Bot is ready to receive webhook requests")
+    
+    # Keep the server running
+    try:
+        while True:
             await asyncio.sleep(1)
-        
-        # This part will only be reached after you press Ctrl+C
-        logger.info("Bot is shutting down.")
-        scheduler.shutdown()
-        
-        # Stop the bot's internal processes
-        await app.updater.stop()
-        await app.stop()
+    except KeyboardInterrupt:
+        logger.info("Shutting down webhook server...")
+        await runner.cleanup()
+        if app:
+            await app.shutdown()
+        logger.info("Webhook server shutdown complete")
 
 if __name__ == "__main__":
-    # --- The Correct Way to Handle Shutdown ---
-    # We wrap the main call in a try/except block to catch Ctrl+C
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot shutdown successfully.")
+        logger.info("Application shutdown successfully.")
